@@ -44,6 +44,8 @@ func newPullCommand(project *string) *cobra.Command {
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ack := acknowledge || legacyAck
+			settings := options
+			settings.limit = pullLimit(options.limit, ack, cmd.Flags().Changed("limit"))
 
 			return withClient(cmd.Context(), *project, func(client *pubsub.Client) (err error) {
 				writer := cmd.OutOrStdout()
@@ -60,7 +62,7 @@ func newPullCommand(project *string) *cobra.Command {
 					writer = file
 				}
 
-				return receive(cmd.Context(), client.Subscriber(subscription), options, ack, func(_ context.Context, message *pubsub.Message) error {
+				return receive(cmd.Context(), client.Subscriber(subscription), settings, ack, func(_ context.Context, message *pubsub.Message) error {
 					if err := writeMessage(writer, format, message); err != nil {
 						return err
 					}
@@ -75,13 +77,22 @@ func newPullCommand(project *string) *cobra.Command {
 		},
 	}
 
-	options.bind(cmd)
+	options.bind(cmd, 1000)
+	cmd.Flags().Lookup("limit").Usage = "maximum messages (unlimited by default with --ack; -1 reads until idle)"
 	cmd.Flags().BoolVarP(&acknowledge, "ack", "a", false, "acknowledge messages after writing them")
 	cmd.Flags().BoolVar(&legacyAck, "auto-ack", false, "alias for --ack")
 	cmd.Flags().StringVarP(&output, "to-file", "f", "", "create a new output file")
 	cmd.Flags().StringVar(&format, "format", "lines", "message format (lines or jsonl)")
 
 	return cmd
+}
+
+
+func pullLimit(limit int, acknowledge, explicit bool) int {
+	if acknowledge && !explicit {
+		return -1
+	}
+	return limit
 }
 
 

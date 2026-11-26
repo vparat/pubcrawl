@@ -61,7 +61,7 @@ func newMoveCommand(project *string) *cobra.Command {
 		},
 	}
 
-	options.bind(cmd)
+	options.bind(cmd, -1)
 
 	return cmd
 }

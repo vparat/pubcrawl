@@ -7,10 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 
 	"cloud.google.com/go/pubsub/v2"
 	"github.com/spf13/cobra"
+	"golang.org/x/time/rate"
 )
 
 
@@ -25,6 +25,7 @@ type messageRecord struct {
 // newPublishCommand returns the publish command using the root project flag.
 func newPublishCommand(project *string) *cobra.Command {
 	var input, literal, format string
+	var messagesPerSecond int
 
 	var topic string
 
@@ -47,13 +48,17 @@ func newPublishCommand(project *string) *cobra.Command {
 				return err
 			}
 
+			if messagesPerSecond < 0 {
+				return errors.New("--rate must be zero or positive")
+			}
+
 			return validateFormat(format)
 		},
 		RunE: func(cmd *cobra.Command, _ []string) (runErr error) {
 			reader := cmd.InOrStdin()
 
 			if cmd.Flags().Changed("from-file") {
-				file, err := os.Open(input)
+				file, err := openPublishFile(input)
 
 				if err != nil {
 					return fmt.Errorf("open input file: %w", err)
@@ -68,15 +73,15 @@ func newPublishCommand(project *string) *cobra.Command {
 				publisher.EnableMessageOrdering = true
 				defer publisher.Stop()
 
-				send := func(message *pubsub.Message) error {
+				send := pacedSender(cmd.Context(), messagesPerSecond, func(message *pubsub.Message) error {
 					return publish(cmd.Context(), publisher, message)
-				}
+				})
 
 				if cmd.Flags().Changed("message") {
 					return send(&pubsub.Message{Data: []byte(literal)})
 				}
 
-				return publishRecords(reader, format, send)
+				return publishInput(cmd.Context(), reader, format, send)
 			})
 		},
 	}
@@ -84,10 +89,26 @@ func newPublishCommand(project *string) *cobra.Command {
 	cmd.Flags().StringVarP(&input, "from-file", "f", "", "read messages from a file")
 	cmd.Flags().StringVarP(&literal, "message", "m", "", "publish a single literal payload")
 	cmd.Flags().StringVar(&format, "format", "lines", "input format for stdin or a file (lines or jsonl)")
+	cmd.Flags().IntVar(&messagesPerSecond, "rate", 0, "maximum messages per second (0 means unlimited)")
 	cmd.MarkFlagsMutuallyExclusive("message", "from-file")
 	cmd.MarkFlagsMutuallyExclusive("message", "format")
 
 	return cmd
+}
+
+
+func pacedSender(ctx context.Context, perSecond int, send func(*pubsub.Message) error) func(*pubsub.Message) error {
+	if perSecond == 0 {
+		return send
+	}
+
+	limiter := rate.NewLimiter(rate.Limit(perSecond), 1)
+	return func(message *pubsub.Message) error {
+		if err := limiter.Wait(ctx); err != nil {
+			return fmt.Errorf("wait for publish rate limit: %w", err)
+		}
+		return send(message)
+	}
 }
 
 

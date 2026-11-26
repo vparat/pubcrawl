@@ -15,9 +15,9 @@ In a shell with `PUBSUB_EMULATOR_HOST` unset, the CLI uses Application Default C
 ## Command behavior
 
 - `pull` writes to stdout by default. Use `--to-file` to create a new file. Without `--ack`, Pub/Sub can redeliver previewed messages. A preview participates in delivery and may count toward a dead-letter policy.
-- `publish` reads stdin by default. Use `--from-file` for a file or `--message` for one literal payload. A failed import may already have published earlier records.
+- `publish` reads stdin by default. Use `--from-file` for a file or `--message` for one literal payload. Use `--rate` to cap messages per second. The default, `0`, disables the cap. A failed import may already have published earlier records.
 - `move` preserves payloads, attributes, and ordering keys. Pub/Sub assigns new message IDs and publish timestamps. Publishing and acknowledging are separate operations, so a crash or lost acknowledgment can cause duplicates.
-- `pull` and `move` use the subscription’s current delivery state. They stop at `--limit` or after `--idle-timeout` without a new message. The defaults are `-1` and `5s`. Idle time is a stopping condition. Other consumers may hold messages or receive them during the run.
+- `pull` and `move` use the subscription’s current delivery state. They stop at `--limit` or after `--idle-timeout` without a new message. The default idle timeout is `5s`. Preview stops after 1,000 distinct messages by default. An explicit `--limit=-1` allows unlimited preview and retains one ID per distinct message in memory. Acknowledged pulls and moves default to unlimited. Idle time is a stopping condition. Other consumers may hold messages or receive them during the run.
 - The default `lines` format represents one payload per line. Use `--format jsonl` at both ends to preserve binary or multiline payloads, attributes, and ordering keys. JSONL records contain base64-encoded `data` and optional `attributes` and `ordering_key` fields.
 
 ## Command examples
@@ -34,6 +34,12 @@ Publish a single payload to a topic.
 
 ```sh
 ./pubcrawl publish orders --project my-project --message '{"order_id":42}'
+```
+
+Publish from a file at up to 10 messages per second.
+
+```sh
+./pubcrawl publish orders --project my-project --from-file orders.jsonl --format jsonl --rate 10
 ```
 
 Replay up to 100 messages from a dead-letter subscription to the original topic. The command acknowledges each source message after publishing it successfully.
