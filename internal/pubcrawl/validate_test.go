@@ -16,6 +16,8 @@ func FuzzValidate(f *testing.F) {
 	f.Add("", "", "", "", 0, int64(0), false)
 	f.Add("project", "projects/other/topics/sub", "projects/other/subscriptions/topic", "xml", -2, int64(-1), false)
 	f.Add("project", "subscription", "topic", "lines", 1, int64(1), true)
+	f.Add("project", "subscription", "topic", "lines", 0, int64(time.Second), false)
+	f.Add("project", "subscription", "topic", "lines", -2, int64(time.Second), false)
 
 	resourceID := regexp.MustCompile(`^[^/ \t\r\n]+$`)
 	subscriptionName := regexp.MustCompile(`^projects/[^/ \t\r\n]+/subscriptions/[^/ \t\r\n]+$`)
@@ -32,6 +34,10 @@ func FuzzValidate(f *testing.F) {
 		idleFlag := "--idle-timeout=" + time.Duration(idleNanos).String()
 		formatFlag := "--format=" + format
 		publishFlags := []string{formatFlag}
+		// Reuse the numeric input to exercise omitted, zero, positive, and negative rates.
+		if limit != -1 {
+			publishFlags = append(publishFlags, "--rate="+strconv.Itoa(limit))
+		}
 		if conflict {
 			publishFlags = append(publishFlags, "--message=payload")
 		}
@@ -43,7 +49,7 @@ func FuzzValidate(f *testing.F) {
 			valid bool
 		}{
 			{"pull", []string{limitFlag, idleFlag, formatFlag}, []string{subscription}, projectOK && subscriptionOK && receiveOK && formatOK},
-			{"publish", publishFlags, []string{topic}, projectOK && topicOK && formatOK && !conflict},
+			{"publish", publishFlags, []string{topic}, projectOK && topicOK && formatOK && !conflict && limit >= -1},
 			{"move", []string{limitFlag, idleFlag}, []string{subscription, topic}, projectOK && subscriptionOK && topicOK && receiveOK},
 		} {
 			root := NewCommand("")

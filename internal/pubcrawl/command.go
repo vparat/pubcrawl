@@ -79,8 +79,8 @@ type receiveOptions struct {
 
 
 // bind registers receive flags on cmd.
-func (o *receiveOptions) bind(cmd *cobra.Command) {
-	cmd.Flags().IntVarP(&o.limit, "limit", "l", -1, "maximum messages to process (-1 reads until idle)")
+func (o *receiveOptions) bind(cmd *cobra.Command, defaultLimit int) {
+	cmd.Flags().IntVarP(&o.limit, "limit", "l", defaultLimit, "maximum messages to process (-1 reads until idle)")
 	cmd.Flags().DurationVar(&o.idle, "idle-timeout", 5*time.Second, "stop after this long without a new message")
 }
 
